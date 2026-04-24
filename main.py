@@ -23,9 +23,6 @@ pre{background:#222;padding:12px;border-radius:6px;overflow-x:auto;color:#afa}
 a{color:#7bf}
 ul,ol{line-height:2}
 .domain{color:#afa}
-button{padding:10px 22px;background:#7ef;color:#111;border:none;cursor:pointer;
-       font-size:1em;border-radius:4px;font-family:monospace}
-button:hover{background:#9ff}
 """
 
 
@@ -157,48 +154,3 @@ async def update(request: Request, token: str):
 
     return PlainTextResponse(f"{fqdn}\n")
 
-
-@app.get("/setup", response_class=HTMLResponse)
-async def setup():
-    body = (
-        "<h1>Konfiguracja OVH Consumer Key</h1>"
-        "<p>Aby aplikacja mog&#322;a zarz&#261;dza&#263; DNS, potrzebujesz Consumer Key (CK) od OVH.</p>"
-        "<h2>Wymagania wst&#281;pne</h2>"
-        "<ol>"
-        "<li>Za&#322;&oacute;&#380; aplikacj&#281; w portalu OVH API (api.ovh.com/createToken).</li>"
-        "<li>Zapisz <strong>Application Key</strong> i <strong>Application Secret</strong>.</li>"
-        "<li>Ustaw je w <code>config.yaml</code> lub zmiennych &#347;rodowiskowych "
-        "<code>OVH_APPLICATION_KEY</code> / <code>OVH_APPLICATION_SECRET</code>.</li>"
-        "</ol>"
-        "<h2>Generowanie Consumer Key</h2>"
-        "<form method='post' action='/setup/init'>"
-        "<button type='submit'>Generuj Consumer Key</button>"
-        "</form>"
-    )
-    return _page("Setup OVH", body)
-
-
-@app.post("/setup/init", response_class=HTMLResponse)
-async def setup_init():
-    try:
-        result = await asyncio.to_thread(ovh_api.request_consumer_key)
-    except Exception as exc:
-        body = f"<h1>B&#322;&aacute;d</h1><p>{exc}</p><p><a href='/setup'>Wr&oacute;&#263;</a></p>"
-        return HTMLResponse(_page("Błąd", body), status_code=500)
-
-    ck = result["consumerKey"]
-    url = result["validationUrl"]
-    body = (
-        "<h1>Consumer Key wygenerowany</h1>"
-        "<p class='warn'>&#9888; Zapisz Consumer Key &mdash; nie b&#281;dzie pokazany ponownie przez t&#281; stron&#281;.</p>"
-        "<h2>Consumer Key</h2>"
-        f"<div class='token'>{ck}</div>"
-        "<h2>Autoryzacja w OVH</h2>"
-        f"<p><a href='{url}' target='_blank'>Kliknij tutaj, aby autoryzowa&#263; w OVH &#8594;</a></p>"
-        "<p>Po autoryzacji dodaj Consumer Key do <code>config.yaml</code>:</p>"
-        f"<pre>ovh:\n  consumer_key: \"{ck}\"</pre>"
-        "<p>lub jako zmienn&#261; &#347;rodowiskow&#261; w <code>.env</code>:</p>"
-        f"<pre>OVH_CONSUMER_KEY={ck}</pre>"
-        "<p>Nast&#281;pnie zrestartuj kontener: <code>docker compose restart</code></p>"
-    )
-    return _page("Consumer Key", body)
