@@ -25,6 +25,9 @@ async def init_db() -> None:
                 expires_at    TEXT NOT NULL
             )
         """)
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_subdomain_domain ON tokens(subdomain, domain)"
+        )
         await db.commit()
 
 

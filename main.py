@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
+import aiosqlite
+
 import config as cfg
 import database
 import ovh_api
@@ -91,10 +93,17 @@ async def get_token(request: Request):
     expiry_days = conf["settings"].get("token_expiry_days", 30)
     expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
 
-    existing = await database.get_existing_subdomains(domain)
-    slug = wordlist.generate_slug(existing)
-
-    await database.create_token(token, domain, slug, expires_at)
+    for _ in range(10):
+        existing = await database.get_existing_subdomains(domain)
+        slug = wordlist.generate_slug(existing)
+        try:
+            await database.create_token(token, domain, slug, expires_at)
+            break
+        except aiosqlite.IntegrityError:
+            continue
+    else:
+        body = "<h1>B&#322;&aacute;d</h1><p>Nie uda&#322;o si&#281; przydzieli&#263; subdomeny. Spr&oacute;buj ponownie.</p>"
+        return HTMLResponse(_page("Błąd", body), status_code=503)
 
     fqdn = f"{slug}.{domain}"
     service_url = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
