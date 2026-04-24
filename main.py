@@ -57,7 +57,17 @@ pre{background:#222;padding:12px;border-radius:6px;overflow-x:auto;color:#afa}
 a{color:#7bf}
 ul,ol{line-height:2}
 .domain{color:#afa}
+footer{margin-top:3em;padding-top:1em;border-top:1px solid #333;color:#555;font-size:.85em}
+footer a{color:#555}
 """
+
+_FOOTER = (
+    "<footer>"
+    "<a href='https://github.com/enclude/www.dns.zjawa.it' target='_blank'>"
+    "github.com/enclude/www.dns.zjawa.it"
+    "</a>"
+    "</footer>"
+)
 
 
 def _page(title: str, body: str) -> str:
@@ -69,6 +79,7 @@ def _page(title: str, body: str) -> str:
         f"<style>{_STYLE}</style>"
         "</head><body>"
         f"{body}"
+        f"{_FOOTER}"
         "</body></html>"
     )
 
@@ -142,6 +153,7 @@ async def get_token(request: Request):
     service_url = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
     curl_example = f'curl "{service_url}/update?token={token}"'
     expires_str = expires_at.strftime("%Y-%m-%d %H:%M UTC")
+    cname_example = f"moj-serwer.example.com.  IN CNAME  {fqdn}."
     body = (
         "<h1>Tw&oacute;j jednorazowy token</h1>"
         "<p class='warn'>&#9888; Token widoczny tylko raz &mdash; zapisz go teraz.</p>"
@@ -152,6 +164,27 @@ async def get_token(request: Request):
         "<h2>U&#380;ycie (curl z adresu IPv4)</h2>"
         f"<pre>{curl_example}</pre>"
         "<p>Pierwsze wywo&#322;anie stworzy rekord A. Ka&#380;de kolejne z innego IP zaktualizuje go.</p>"
+        "<h2>Mo&#380;liwe zastosowania</h2>"
+        "<ul>"
+        "<li><strong>Dost&#281;p do domowego serwera</strong> &mdash; uruchom curl w cronie co kilka minut. "
+        "Subdomena zawsze wska&#380;e na Tw&oacute;j aktualny adres IP, nawet je&#347;li si&#281; zmieni.</li>"
+        "<li><strong>VPN / tunel SSH</strong> &mdash; po&#322;&aacute;cz si&#281; ze swoim hostem przez subdomen&#281; "
+        "zamiast wpisywa&#263; IP na sztywno. Dzia&#322;a z dynamicznym IP od ISP.</li>"
+        "<li><strong>W&#322;asna domena przez CNAME</strong> &mdash; dodaj do swojej strefy DNS wpis CNAME "
+        "wskazuj&#261;cy na t&#281; subdomen&#281;. Zmiana IP wymaga tylko uruchomienia curl &mdash; "
+        "bez dotykania w&#322;asnej strefy.</li>"
+        "<li><strong>Self-hosting us&#322;ug</strong> &mdash; serwer WWW, Nextcloud, Home Assistant, kamera IP "
+        "&mdash; cokolwiek wystawionego na zewn&#261;trz pod dynamicznym IP.</li>"
+        "</ul>"
+        "<h2>CNAME &mdash; w&#322;asna domena</h2>"
+        "<p>Dodaj w swojej strefie DNS (u w&#322;asnego rejestratora):</p>"
+        f"<pre>{cname_example}</pre>"
+        "<p>Od tej chwili <code>moj-serwer.example.com</code> b&#281;dzie automatycznie pod&#261;&#380;a&#263; "
+        "za Twoim IP &mdash; wystarczy regularnie wo&#322;a&#263; curl z tokena powy&#380;ej.</p>"
+        "<h2>Cron &mdash; automatyczna aktualizacja</h2>"
+        "<p>Dodaj do <code>crontab -e</code> na swoim serwerze/routerze:</p>"
+        f"<pre>*/5 * * * * curl -s \"{service_url}/update?token={token}\" &gt; /dev/null</pre>"
+        "<p>Co 5 minut &mdash; je&#347;li IP si&#281; nie zmieni&#322;o, zapytanie wr&oacute;ci natychmiast bez wywo&#322;ania OVH API.</p>"
     )
     return _page("Token DNS", body)
 
