@@ -1,6 +1,8 @@
 import asyncio
 import random
 import secrets
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +15,21 @@ import config as cfg
 import database
 import ovh_api
 import wordlist
+
+# Rate limiter — śledzi nieudane próby /update per IP
+_RATE_WINDOW = 60   # sekund
+_RATE_MAX = 10      # max nieudanych prób w oknie
+_failed: dict[str, list[float]] = defaultdict(list)
+
+
+def _is_rate_limited(ip: str) -> bool:
+    cutoff = time.monotonic() - _RATE_WINDOW
+    _failed[ip] = [t for t in _failed[ip] if t > cutoff]
+    return len(_failed[ip]) >= _RATE_MAX
+
+
+def _record_failure(ip: str) -> None:
+    _failed[ip].append(time.monotonic())
 
 _STYLE = """
 body{font-family:monospace;max-width:720px;margin:40px auto;padding:0 20px;background:#111;color:#ddd}
@@ -125,16 +142,22 @@ async def get_token(request: Request):
 
 @app.get("/update")
 async def update(request: Request, token: str):
-    record = await database.get_token(token)
-    if not record:
-        return PlainTextResponse("Blad: nieprawidlowy lub wygasly token.\n", status_code=401)
-
     ip = _get_ip(request)
 
     if ":" in ip:
         return PlainTextResponse(
             "Blad: wykryto adres IPv6. Uzyj polaczenia IPv4.\n", status_code=400
         )
+
+    if _is_rate_limited(ip):
+        return PlainTextResponse(
+            "Blad: zbyt wiele nieudanych prob. Sprobuj za minute.\n", status_code=429
+        )
+
+    record = await database.get_token(token)
+    if not record:
+        _record_failure(ip)
+        return PlainTextResponse("Blad: nieprawidlowy lub wygasly token.\n", status_code=401)
 
     conf = cfg.load()
     domain = record["domain"]
