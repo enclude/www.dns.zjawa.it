@@ -28,12 +28,12 @@ async def init_db() -> None:
         await db.commit()
 
 
-async def create_token(token: str, domain: str, expires_at: datetime) -> None:
+async def create_token(token: str, domain: str, subdomain: str, expires_at: datetime) -> None:
     now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(_db_path()) as db:
         await db.execute(
-            "INSERT INTO tokens (id, domain, created_at, expires_at) VALUES (?, ?, ?, ?)",
-            (token, domain, now, expires_at.isoformat()),
+            "INSERT INTO tokens (id, domain, subdomain, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (token, domain, subdomain, now, expires_at.isoformat()),
         )
         await db.commit()
 
