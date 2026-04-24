@@ -183,8 +183,10 @@ async def get_token(request: Request):
         "za Twoim IP &mdash; wystarczy regularnie wo&#322;a&#263; curl z tokena powy&#380;ej.</p>"
         "<h2>Cron &mdash; automatyczna aktualizacja</h2>"
         "<p>Dodaj do <code>crontab -e</code> na swoim serwerze/routerze:</p>"
-        f"<pre>*/5 * * * * curl -s \"{service_url}/update?token={token}\" &gt; /dev/null</pre>"
-        "<p>Co 5 minut &mdash; je&#347;li IP si&#281; nie zmieni&#322;o, zapytanie wr&oacute;ci natychmiast bez aktualizacji DNS.</p>"
+        f"<pre>*/30 * * * * curl -s \"{service_url}/update?token={token}\" &gt; /dev/null</pre>"
+        "<p>Co 30 minut wystarczy &mdash; ISP zmienia IP co najwy&#380;ej kilka razy dziennie. "
+        "Je&#347;li IP si&#281; nie zmieni&#322;o, zapytanie wr&oacute;ci natychmiast bez aktualizacji DNS. "
+        "Mo&#380;esz te&#380; u&#380;y&#263; <code>0 * * * *</code> dla interwału godzinnego.</p>"
     )
     return _page("Token DNS", body)
 
