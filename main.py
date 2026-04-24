@@ -184,7 +184,7 @@ async def get_token(request: Request):
         "<h2>Cron &mdash; automatyczna aktualizacja</h2>"
         "<p>Dodaj do <code>crontab -e</code> na swoim serwerze/routerze:</p>"
         f"<pre>*/5 * * * * curl -s \"{service_url}/update?token={token}\" &gt; /dev/null</pre>"
-        "<p>Co 5 minut &mdash; je&#347;li IP si&#281; nie zmieni&#322;o, zapytanie wr&oacute;ci natychmiast bez wywo&#322;ania OVH API.</p>"
+        "<p>Co 5 minut &mdash; je&#347;li IP si&#281; nie zmieni&#322;o, zapytanie wr&oacute;ci natychmiast bez aktualizacji DNS.</p>"
     )
     return _page("Token DNS", body)
 
@@ -239,7 +239,7 @@ async def update(request: Request, token: str):
             await database.update_ip(token, ip, expiry_days)
             _log.info("ip=%s fqdn=%s action=updated", ip, fqdn)
     except Exception as exc:
-        return PlainTextResponse(f"Blad OVH API: {exc}\n", status_code=502)
+        return PlainTextResponse(f"Blad DNS API: {exc}\n", status_code=502)
 
     return PlainTextResponse(f"{fqdn}\n")
 
