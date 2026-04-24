@@ -122,7 +122,7 @@ async def get_token(request: Request):
         return HTMLResponse(_page("Błąd", body), status_code=503)
 
     domain = random.choice(domains)
-    token = secrets.token_hex(16)
+    token = secrets.token_urlsafe(32)
     expiry_days = conf["settings"].get("token_expiry_days", 30)
     expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
 
