@@ -1,0 +1,15 @@
+services:
+  dns-app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Zamień ścieżkę na odpowiednią dla Twojej domeny
+      - /opt/nginx/dns.zjawa.it:/app/data
+    environment:
+      DATA_DIR: /app/data
+      # Sekrety OVH — ustaw w pliku .env obok docker-compose.yml
+      OVH_APPLICATION_KEY:    ${OVH_APPLICATION_KEY}
+      OVH_APPLICATION_SECRET: ${OVH_APPLICATION_SECRET}
+      OVH_CONSUMER_KEY:       ${OVH_CONSUMER_KEY}

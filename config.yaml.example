@@ -1,0 +1,12 @@
+ovh:
+  endpoint: ovh-eu
+  application_key: ""        # AK z portalu OVH API
+  application_secret: ""     # AS z portalu OVH API
+  consumer_key: ""           # CK uzyskany przez /setup
+
+domains:
+  - zjawa.it
+
+settings:
+  ttl: 60                    # TTL rekordów DNS w sekundach
+  token_expiry_days: 30      # Ważność tokena w dniach
