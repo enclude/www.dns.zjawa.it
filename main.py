@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import os
 import random
 import secrets
 import time
@@ -30,6 +32,19 @@ def _is_rate_limited(ip: str) -> bool:
 
 def _record_failure(ip: str) -> None:
     _failed[ip].append(time.monotonic())
+
+
+_log = logging.getLogger("dns")
+
+
+def _setup_logging() -> None:
+    data_dir = os.environ.get("DATA_DIR", "/app/data")
+    handler = logging.FileHandler(os.path.join(data_dir, "dns.log"))
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"))
+    handler.formatter.converter = time.gmtime
+    _log.addHandler(handler)
+    _log.setLevel(logging.INFO)
+
 
 _STYLE = """
 body{font-family:monospace;max-width:720px;margin:40px auto;padding:0 20px;background:#111;color:#ddd}
@@ -68,6 +83,7 @@ def _get_ip(request: Request) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init_db()
+    _setup_logging()
     yield
 
 
@@ -164,14 +180,14 @@ async def update(request: Request, token: str):
     ttl = conf["settings"].get("ttl", 60)
     expiry_days = conf["settings"].get("token_expiry_days", 30)
 
-    # IP unchanged — extend expiry and return existing FQDN, no OVH call
-    if record["ip"] == ip and record["subdomain"] is not None:
-        await database.touch_token(token, expiry_days)
-        fqdn = f"{record['subdomain']}.{record['domain']}"
-        return PlainTextResponse(f"{fqdn}\n")
-
     slug = record["subdomain"]
     fqdn = f"{slug}.{domain}"
+
+    # IP unchanged — extend expiry and return existing FQDN, no OVH call
+    if record["ip"] == ip and record["ovh_record_id"] is not None:
+        await database.touch_token(token, expiry_days)
+        _log.info("ip=%s fqdn=%s action=unchanged", ip, fqdn)
+        return PlainTextResponse(f"{fqdn}\n")
 
     try:
         if record["ovh_record_id"] is None:
@@ -181,12 +197,14 @@ async def update(request: Request, token: str):
             )
             await asyncio.to_thread(ovh_api.refresh_zone, domain)
             await database.set_subdomain(token, slug, record_id, ip, expiry_days)
+            _log.info("ip=%s fqdn=%s action=created", ip, fqdn)
         else:
             await asyncio.to_thread(
                 ovh_api.update_record, domain, record["ovh_record_id"], ip, ttl
             )
             await asyncio.to_thread(ovh_api.refresh_zone, domain)
             await database.update_ip(token, ip, expiry_days)
+            _log.info("ip=%s fqdn=%s action=updated", ip, fqdn)
     except Exception as exc:
         return PlainTextResponse(f"Blad OVH API: {exc}\n", status_code=502)
 
