@@ -79,7 +79,7 @@ async def index():
 
 
 @app.get("/token", response_class=HTMLResponse)
-async def get_token():
+async def get_token(request: Request):
     conf = cfg.load()
     domains = conf.get("domains", [])
     if not domains:
@@ -91,21 +91,25 @@ async def get_token():
     expiry_days = conf["settings"].get("token_expiry_days", 30)
     expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
 
-    await database.create_token(token, domain, expires_at)
+    existing = await database.get_existing_subdomains(domain)
+    slug = wordlist.generate_slug(existing)
 
+    await database.create_token(token, domain, slug, expires_at)
+
+    fqdn = f"{slug}.{domain}"
+    service_url = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    curl_example = f'curl "{service_url}/update?token={token}"'
     expires_str = expires_at.strftime("%Y-%m-%d %H:%M UTC")
-    curl_example = f"curl \"https://{domain}/update?token={token}\""
     body = (
         "<h1>Tw&oacute;j jednorazowy token</h1>"
         "<p class='warn'>&#9888; Token widoczny tylko raz &mdash; zapisz go teraz.</p>"
-        f"<p>Domena: <span class='domain'>{domain}</span></p>"
-        f"<p>Wa&#380;ny do: {expires_str}</p>"
+        f"<p>Subdomena: <span class='domain'>{fqdn}</span></p>"
+        f"<p>Wa&#380;ny do: {expires_str} (przed&#322;u&#380;a si&#281; przy ka&#380;dym u&#380;yciu)</p>"
         "<h2>Token</h2>"
         f"<div class='token'>{token}</div>"
         "<h2>U&#380;ycie (curl z adresu IPv4)</h2>"
         f"<pre>{curl_example}</pre>"
-        "<p>Ka&#380;de kolejne wywo&#322;anie z innego IP zaktualizuje rekord DNS.</p>"
-        "<p>Je&#347;li IP si&#281; nie zmieni&#322;o &mdash; zostanie zwr&oacute;cona istniej&#261;ca subdomena bez zmiany DNS.</p>"
+        "<p>Pierwsze wywo&#322;anie stworzy rekord A. Ka&#380;de kolejne z innego IP zaktualizuje go.</p>"
     )
     return _page("Token DNS", body)
 
@@ -134,23 +138,23 @@ async def update(request: Request, token: str):
         fqdn = f"{record['subdomain']}.{record['domain']}"
         return PlainTextResponse(f"{fqdn}\n")
 
+    slug = record["subdomain"]
+    fqdn = f"{slug}.{domain}"
+
     try:
-        if record["subdomain"] is None:
-            existing = await database.get_existing_subdomains(domain)
-            slug = wordlist.generate_slug(existing)
+        if record["ovh_record_id"] is None:
+            # Pierwsze użycie tokena — subdomena już przypisana, tworzymy rekord w OVH
             record_id = await asyncio.to_thread(
                 ovh_api.create_record, domain, slug, ip, ttl
             )
             await asyncio.to_thread(ovh_api.refresh_zone, domain)
             await database.set_subdomain(token, slug, record_id, ip, expiry_days)
-            fqdn = f"{slug}.{domain}"
         else:
             await asyncio.to_thread(
                 ovh_api.update_record, domain, record["ovh_record_id"], ip, ttl
             )
             await asyncio.to_thread(ovh_api.refresh_zone, domain)
             await database.update_ip(token, ip, expiry_days)
-            fqdn = f"{record['subdomain']}.{record['domain']}"
     except Exception as exc:
         return PlainTextResponse(f"Blad OVH API: {exc}\n", status_code=502)
 
