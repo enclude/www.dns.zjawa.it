@@ -103,11 +103,12 @@ _RAW = [
 WORDS = list(dict.fromkeys(_RAW))
 
 
-def generate_slug(existing: set | None = None, length: int = 5) -> str:
+def generate_slug(existing: set | None = None) -> str:
     if existing is None:
         existing = set()
-    for _ in range(200):
-        slug = "-".join(random.sample(WORDS, length))
-        if slug not in existing:
-            return slug
-    raise RuntimeError("Nie udało się wygenerować unikalnego slug po 200 próbach")
+    for length in range(2, 6):
+        for _ in range(10):
+            slug = "-".join(random.sample(WORDS, length))
+            if slug not in existing:
+                return slug
+    raise RuntimeError("Nie udało się wygenerować unikalnego slug (wyczerpano kombinacje 2-5 słów)")
