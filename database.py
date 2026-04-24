@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
@@ -61,24 +61,37 @@ async def get_existing_subdomains(domain: str) -> set:
 
 
 async def set_subdomain(
-    token: str, subdomain: str, ovh_record_id: str, ip: str
+    token: str, subdomain: str, ovh_record_id: str, ip: str, expiry_days: int
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=expiry_days)
     async with aiosqlite.connect(_db_path()) as db:
         await db.execute(
             """UPDATE tokens
-               SET subdomain = ?, ovh_record_id = ?, ip = ?, last_used_at = ?
+               SET subdomain = ?, ovh_record_id = ?, ip = ?, last_used_at = ?, expires_at = ?
                WHERE id = ?""",
-            (subdomain, ovh_record_id, ip, now, token),
+            (subdomain, ovh_record_id, ip, now.isoformat(), expires_at.isoformat(), token),
         )
         await db.commit()
 
 
-async def update_ip(token: str, ip: str) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+async def update_ip(token: str, ip: str, expiry_days: int) -> None:
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=expiry_days)
     async with aiosqlite.connect(_db_path()) as db:
         await db.execute(
-            "UPDATE tokens SET ip = ?, last_used_at = ? WHERE id = ?",
-            (ip, now, token),
+            "UPDATE tokens SET ip = ?, last_used_at = ?, expires_at = ? WHERE id = ?",
+            (ip, now.isoformat(), expires_at.isoformat(), token),
+        )
+        await db.commit()
+
+
+async def touch_token(token: str, expiry_days: int) -> None:
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=expiry_days)
+    async with aiosqlite.connect(_db_path()) as db:
+        await db.execute(
+            "UPDATE tokens SET last_used_at = ?, expires_at = ? WHERE id = ?",
+            (now.isoformat(), expires_at.isoformat(), token),
         )
         await db.commit()

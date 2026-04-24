@@ -123,14 +123,16 @@ async def update(request: Request, token: str):
             "Blad: wykryto adres IPv6. Uzyj polaczenia IPv4.\n", status_code=400
         )
 
-    # IP unchanged — return existing FQDN immediately, no OVH call
-    if record["ip"] == ip and record["subdomain"] is not None:
-        fqdn = f"{record['subdomain']}.{record['domain']}"
-        return PlainTextResponse(f"{fqdn}\n")
-
     conf = cfg.load()
     domain = record["domain"]
     ttl = conf["settings"].get("ttl", 60)
+    expiry_days = conf["settings"].get("token_expiry_days", 30)
+
+    # IP unchanged — extend expiry and return existing FQDN, no OVH call
+    if record["ip"] == ip and record["subdomain"] is not None:
+        await database.touch_token(token, expiry_days)
+        fqdn = f"{record['subdomain']}.{record['domain']}"
+        return PlainTextResponse(f"{fqdn}\n")
 
     try:
         if record["subdomain"] is None:
@@ -140,14 +142,14 @@ async def update(request: Request, token: str):
                 ovh_api.create_record, domain, slug, ip, ttl
             )
             await asyncio.to_thread(ovh_api.refresh_zone, domain)
-            await database.set_subdomain(token, slug, record_id, ip)
+            await database.set_subdomain(token, slug, record_id, ip, expiry_days)
             fqdn = f"{slug}.{domain}"
         else:
             await asyncio.to_thread(
                 ovh_api.update_record, domain, record["ovh_record_id"], ip, ttl
             )
             await asyncio.to_thread(ovh_api.refresh_zone, domain)
-            await database.update_ip(token, ip)
+            await database.update_ip(token, ip, expiry_days)
             fqdn = f"{record['subdomain']}.{record['domain']}"
     except Exception as exc:
         return PlainTextResponse(f"Blad OVH API: {exc}\n", status_code=502)
