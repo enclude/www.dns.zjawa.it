@@ -33,6 +33,14 @@ def update_record(zone: str, record_id: str, ip: str, ttl: int) -> None:
     )
 
 
+def delete_record(zone: str, record_id: str) -> None:
+    client = _client()
+    try:
+        client.delete(f"/domain/zone/{zone}/record/{record_id}")
+    except ovh.exceptions.ResourceNotFoundError:
+        pass  # rekord usunięty ręcznie — nie blokuj czyszczenia tokena
+
+
 def refresh_zone(zone: str) -> None:
     client = _client()
     client.post(f"/domain/zone/{zone}/refresh")

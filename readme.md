@@ -64,12 +64,13 @@ Klucze OVH uzyskasz w [panelu API OVH](https://www.ovh.com/auth/api/createToken)
 cp .env.example .env
 ```
 
-Uzupełnij `.env` tymi samymi kluczami (alternatywa dla `config.yaml`):
+Uzupełnij `.env` tymi samymi kluczami (alternatywa dla `config.yaml`) oraz adresem IP reverse proxy:
 
 ```
 OVH_APPLICATION_KEY=TWÓJ_AK
 OVH_APPLICATION_SECRET=TWÓJ_AS
 OVH_CONSUMER_KEY=TWÓJ_CK
+FORWARDED_ALLOW_IPS=IP_SERWERA_NPM
 ```
 
 ### 4. Uruchom kontener
@@ -88,7 +89,7 @@ Aplikacja jest zaprojektowana do pracy za zewnętrznym reverse proxy (NPM na inn
 - **Forward Port:** `8000`
 - **Websockets Support:** nie wymagane
 
-Uvicorn uruchomiony jest z flagą `--proxy-headers`, więc prawdziwy IP klienta jest poprawnie odczytywany z nagłówka `X-Forwarded-For`.
+Uvicorn uruchomiony jest z flagą `--proxy-headers`, więc prawdziwy IP klienta jest odczytywany z nagłówka `X-Forwarded-For` — ale wyłącznie z żądań przychodzących z zaufanego proxy. Ustaw IP serwera NPM w zmiennej `FORWARDED_ALLOW_IPS` w `.env`. Bez tego nagłówek jest ignorowany, wszystkie żądania będą widziane z IP proxy i limity per klient obejmą wszystkich użytkowników łącznie.
 
 > **Bezpieczeństwo:** Zablokuj port `8000` na firewallu hosta tak, by był dostępny tylko z IP serwera NPM:
 > ```bash

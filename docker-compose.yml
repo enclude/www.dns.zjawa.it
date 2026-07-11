@@ -9,6 +9,8 @@ services:
       - /opt/nginx/dns.zjawa.it:/app/data
     environment:
       DATA_DIR: /app/data
+      # IP reverse proxy (NPM), któremu uvicorn ufa przy X-Forwarded-For — ustaw w .env
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
       # Sekrety OVH — ustaw w pliku .env obok docker-compose.yml
       OVH_APPLICATION_KEY:    ${OVH_APPLICATION_KEY}
       OVH_APPLICATION_SECRET: ${OVH_APPLICATION_SECRET}

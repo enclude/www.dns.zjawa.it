@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import os
 import random
@@ -18,20 +19,24 @@ import database
 import ovh_api
 import wordlist
 
-# Rate limiter — śledzi nieudane próby /update per IP
+# Rate limitery — okna przesuwne per IP
 _RATE_WINDOW = 60   # sekund
-_RATE_MAX = 10      # max nieudanych prób w oknie
+_RATE_MAX = 10      # max nieudanych prób /update w oknie
 _failed: dict[str, list[float]] = defaultdict(list)
 
-
-def _is_rate_limited(ip: str) -> bool:
-    cutoff = time.monotonic() - _RATE_WINDOW
-    _failed[ip] = [t for t in _failed[ip] if t > cutoff]
-    return len(_failed[ip]) >= _RATE_MAX
+_TOKEN_WINDOW = 3600  # sekund
+_TOKEN_MAX = 5        # max wydanych tokenów per IP w oknie
+_issued: dict[str, list[float]] = defaultdict(list)
 
 
-def _record_failure(ip: str) -> None:
-    _failed[ip].append(time.monotonic())
+def _is_rate_limited(hits: dict[str, list[float]], ip: str, window: float, limit: int) -> bool:
+    cutoff = time.monotonic() - window
+    hits[ip] = [t for t in hits[ip] if t > cutoff]
+    return len(hits[ip]) >= limit
+
+
+def _record_hit(hits: dict[str, list[float]], ip: str) -> None:
+    hits[ip].append(time.monotonic())
 
 
 _log = logging.getLogger("dns")
@@ -84,18 +89,43 @@ def _page(title: str, body: str) -> str:
     )
 
 
-def _get_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host
+# IP klienta pochodzi z uvicorna (--proxy-headers + forwarded-allow-ips),
+# który podmienia request.client na adres z X-Forwarded-For tylko dla zaufanego proxy.
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+_CLEANUP_INTERVAL = 3600  # sekund
+
+
+async def _cleanup_expired_loop() -> None:
+    while True:
+        try:
+            for rec in await database.get_expired_tokens():
+                fqdn = f"{rec['subdomain']}.{rec['domain']}"
+                if rec["ovh_record_id"] is not None:
+                    try:
+                        await asyncio.to_thread(
+                            ovh_api.delete_record, rec["domain"], rec["ovh_record_id"]
+                        )
+                        await asyncio.to_thread(ovh_api.refresh_zone, rec["domain"])
+                    except Exception:
+                        _log.exception("fqdn=%s action=purge_failed", fqdn)
+                        continue  # spróbujemy ponownie w kolejnym cyklu
+                await database.delete_token(rec["id"])
+                _log.info("fqdn=%s action=purged", fqdn)
+        except Exception:
+            _log.exception("cleanup: nieoczekiwany blad")
+        await asyncio.sleep(_CLEANUP_INTERVAL)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init_db()
     _setup_logging()
+    cleanup_task = asyncio.create_task(_cleanup_expired_loop())
     yield
+    cleanup_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -126,6 +156,15 @@ async def index():
 
 @app.get("/token", response_class=HTMLResponse)
 async def get_token(request: Request):
+    ip = _client_ip(request)
+    if _is_rate_limited(_issued, ip, _TOKEN_WINDOW, _TOKEN_MAX):
+        body = (
+            "<h1>Zbyt wiele token&oacute;w</h1>"
+            "<p>Z tego adresu IP wydano ju&#380; maksymaln&#261; liczb&#281; token&oacute;w. "
+            "Spr&oacute;buj ponownie za godzin&#281;.</p>"
+        )
+        return HTMLResponse(_page("Zbyt wiele tokenów", body), status_code=429)
+
     conf = cfg.load()
     domains = conf.get("domains", [])
     if not domains:
@@ -149,8 +188,12 @@ async def get_token(request: Request):
         body = "<h1>B&#322;&aacute;d</h1><p>Nie uda&#322;o si&#281; przydzieli&#263; subdomeny. Spr&oacute;buj ponownie.</p>"
         return HTMLResponse(_page("Błąd", body), status_code=503)
 
+    _record_hit(_issued, ip)
+
     fqdn = f"{slug}.{domain}"
-    service_url = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    # html.escape — nagłówek Host jest kontrolowany przez klienta i trafia do HTML
+    host = html.escape(request.headers.get("host", request.url.netloc))
+    service_url = f"{request.url.scheme}://{host}"
     curl_example = f'curl "{service_url}/update?token={token}"'
     expires_str = expires_at.strftime("%Y-%m-%d %H:%M UTC")
     cname_example = f"moj-serwer.example.com.  IN CNAME  {fqdn}."
@@ -193,21 +236,21 @@ async def get_token(request: Request):
 
 @app.get("/update")
 async def update(request: Request, token: str):
-    ip = _get_ip(request)
+    ip = _client_ip(request)
 
     if ":" in ip:
         return PlainTextResponse(
             "Blad: wykryto adres IPv6. Uzyj polaczenia IPv4.\n", status_code=400
         )
 
-    if _is_rate_limited(ip):
+    if _is_rate_limited(_failed, ip, _RATE_WINDOW, _RATE_MAX):
         return PlainTextResponse(
             "Blad: zbyt wiele nieudanych prob. Sprobuj za minute.\n", status_code=429
         )
 
     record = await database.get_token(token)
     if not record:
-        _record_failure(ip)
+        _record_hit(_failed, ip)
         return PlainTextResponse("Blad: nieprawidlowy lub wygasly token.\n", status_code=401)
 
     conf = cfg.load()

@@ -53,6 +53,24 @@ async def get_token(token: str) -> dict | None:
             return dict(row) if row else None
 
 
+async def get_expired_tokens() -> list[dict]:
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(_db_path()) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, domain, subdomain, ovh_record_id FROM tokens WHERE expires_at <= ?",
+            (now,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def delete_token(token: str) -> None:
+    async with aiosqlite.connect(_db_path()) as db:
+        await db.execute("DELETE FROM tokens WHERE id = ?", (token,))
+        await db.commit()
+
+
 async def get_existing_subdomains(domain: str) -> set:
     async with aiosqlite.connect(_db_path()) as db:
         async with db.execute(
