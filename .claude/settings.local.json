@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git -C /mnt/c/Users/jaroslaw.zjawinski/GIT/www.dns.zjawa.it log --oneline -15)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  },
   "enabledPlugins": {
     "security-guidance@claude-plugins-official": true
   }
